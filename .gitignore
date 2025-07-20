@@ -179,3 +179,8 @@ config.json
 
 # Ignore logs 
 logs/*
+
+.DS_Store
+
+# User-specific files
+.vs
