@@ -116,5 +116,5 @@ Transform your YouTube channel into a money-making, interactive gaming hub with 
 ## Inspiration
 As I showed you in the video my inspiration was [Petyr](https://www.youtube.com/@petyrguardian) and the other YouTubers who made their own version of the Falling Pickaxe game. Huge thanks to them.
 
-## Huge thanks to the following contributors:
+## External contributors
 https://www.youtube.com/@Iklzzz
