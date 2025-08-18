@@ -94,6 +94,18 @@ diamond
 netherite
 ```
 
+### MegaTNT spawning
+
+Extra details about when a MegaTNT appears in the game:
+
+- New subscribers are detected by periodically polling YouTube for the channel's subscriber count. When an increase is detected the game appends an entry to the `mega_tnt_queue` (the string `"New Subscriber"`) and the MegaTNT will be spawned when the queues are processed.
+- Queue processing happens every `QUEUES_POP_INTERVAL_SECONDS` (see `default.config.json` / `config.json`). Polling frequency for YouTube is controlled by `YT_POLL_INTERVAL_SECONDS`.
+- Requirements for automatic MegaTNT spawning: `CHAT_CONTROL` must be `true`, a valid `live_chat_id` and `CHANNEL_ID` must be configured so the game can read subscriber counts.
+- The queued owner name is currently the literal string `"New Subscriber"` (not the subscriber's username). You can change this behavior in code if you want actual usernames used.
+- You can also spawn a MegaTNT manually in-game by pressing the `M` key — this spawns immediately (no queue).
+- MegaTNTs use a larger explosion radius, detonate automatically ~4 seconds after spawn, and trigger a stronger camera shake.
+
+
 ## Contributing
 Any kind of improvements to the code, refactoring, new features, bug fixes, ideas, or anything else is welcome. You can open an issue or a pull requets and I will review it as soon as I can.
 
