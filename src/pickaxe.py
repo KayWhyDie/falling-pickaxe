@@ -126,8 +126,10 @@ class Pickaxe:
         elif(pickaxe_name =="netherite_pickaxe"):
             self.damage = 12
 
-    def pickaxe(self, name, texture_atlas, atlas_items):
+    def pickaxe(self, name, texture_atlas, atlas_items, owner_name=None):
         """Set the pickaxe's properties based on its name."""
+        if owner_name:
+            self.owner_name = owner_name
 
         self.texture = texture_atlas.subsurface(atlas_items["pickaxe"][name])
         print("Setting pickaxe to:", name)
@@ -193,6 +195,16 @@ class Pickaxe:
         rect.y -= camera.offset_y
         rect.x -= camera.offset_x
         screen.blit(rotated_image, rect)
+        
+        # Draw owner name if available
+        if hasattr(self, 'owner_name') and self.owner_name:
+            font = pygame.font.Font(None, 70)
+            text_surface = font.render(self.owner_name, True, (255, 255, 255))
+            text_rect = text_surface.get_rect(center=(self.body.position.x - camera.offset_x, self.body.position.y - 100 - camera.offset_y))
+            shadow = font.render(self.owner_name, True, (0, 0, 0))
+            shadow_rect = shadow.get_rect(center=(self.body.position.x + 1 - camera.offset_x, self.body.position.y - 99 - camera.offset_y))
+            screen.blit(shadow, shadow_rect)
+            screen.blit(text_surface, text_rect)
 
     def enlarge(self, duration=5000):
         """Temporarily makes the pickaxe 3 times bigger with a larger hitbox."""

@@ -6,20 +6,24 @@ from youtube import get_live_stream, get_new_live_chat_messages, get_live_chat_i
 from config import config
 from atlas import create_texture_atlas
 from pathlib import Path
-from chunk import get_block, clean_chunks, delete_block, chunks
+from chunk import get_block, clean_chunks, chunks
 from constants import BLOCK_SCALE_FACTOR, BLOCK_SIZE, CHUNK_HEIGHT, CHUNK_WIDTH, INTERNAL_HEIGHT, INTERNAL_WIDTH, FRAMERATE
 from pickaxe import Pickaxe
 from camera import Camera
 from sound import SoundManager
-from tnt import Tnt, MegaTnt
+from tnt import Tnt, MegaTnt, NukeTnt
 import asyncio
 import threading
 import random
 from hud import Hud
+from debug import handle_debug_input  # Import the new debug function
+from spawn_requests import get_pending_spawns
+from avatar_cache import get as get_avatar, request as request_avatar
 
 # Track key states
 key_t_pressed = False
 key_m_pressed = False
+
 
 #
 live_stream = None
@@ -146,11 +150,17 @@ asyncio_loop = asyncio.new_event_loop()
 threading.Thread(target=start_event_loop, args=(asyncio_loop,), daemon=True).start()
 
 def game():
+    global key_t_pressed, key_m_pressed
+
+
+    DEBUG_MODE_ACTIVE = False
+    
     window_width = int(INTERNAL_WIDTH / 2)
     window_height = int(INTERNAL_HEIGHT / 2)
 
     # Initialize pygame
     pygame.init()
+    print("Press F1 at any time to toggle DEBUG MODE.")
     clock = pygame.time.Clock()
 
     # Pymunk physics
@@ -181,8 +191,8 @@ def game():
 
     # Scale the entire texture atlas
     texture_atlas = pygame.transform.scale(texture_atlas,
-                                        (texture_atlas.get_width() * BLOCK_SCALE_FACTOR,
-                                        texture_atlas.get_height() * BLOCK_SCALE_FACTOR))
+                                           (texture_atlas.get_width() * BLOCK_SCALE_FACTOR,
+                                            texture_atlas.get_height() * BLOCK_SCALE_FACTOR))
 
     for category in atlas_items:
         for item in atlas_items[category]:
@@ -266,7 +276,13 @@ def game():
 
                 window_width, window_height = new_width, new_height
                 screen = pygame.display.set_mode((window_width, window_height), pygame.RESIZABLE)
-
+            
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_F1:
+                    DEBUG_MODE_ACTIVE = not DEBUG_MODE_ACTIVE  # Toggle debug mode
+                if DEBUG_MODE_ACTIVE:
+                    handle_debug_input(event, space, texture_atlas, atlas_items, sound_manager, camera, tnt_list, pickaxe)
+                    
         # ++++++++++++++++++  UPDATE ++++++++++++++++++
         # Determine which chunks are visible
         # Update physics
@@ -298,13 +314,13 @@ def game():
         # Check if it's time to spawn a new TNT (regular random spawn)
         current_time = pygame.time.get_ticks()
         if (not config["CHAT_CONTROL"] or (not tnt_queue and not tnt_superchat_queue and not mega_tnt_queue)) and current_time - last_tnt_spawn >= tnt_spawn_interval:
-             # Example: spawn TNT at position (400, 300) with a given texture
-             new_tnt = Tnt(space, pickaxe.body.position.x, pickaxe.body.position.y - 100,
-               texture_atlas, atlas_items, sound_manager)
-             tnt_list.append(new_tnt)
-             last_tnt_spawn = current_time
-             # New random interval for the next TNT spawn
-             tnt_spawn_interval = 1000 * random.uniform(config["TNT_SPAWN_INTERVAL_SECONDS_MIN"], config["TNT_SPAWN_INTERVAL_SECONDS_MAX"])
+              # Example: spawn TNT at position (400, 300) with a given texture
+              new_tnt = Tnt(space, pickaxe.body.position.x, pickaxe.body.position.y - 100,
+                  texture_atlas, atlas_items, sound_manager)
+              tnt_list.append(new_tnt)
+              last_tnt_spawn = current_time
+              # New random interval for the next TNT spawn
+              tnt_spawn_interval = 1000 * random.uniform(config["TNT_SPAWN_INTERVAL_SECONDS_MIN"], config["TNT_SPAWN_INTERVAL_SECONDS_MAX"])
 
         # Check if it's time to change the pickaxe (random)
         if (not config["CHAT_CONTROL"] or not pickaxe_queue) and current_time - last_random_pickaxe >= random_pickaxe_interval:
@@ -352,7 +368,7 @@ def game():
                 author = tnt_queue.pop(0)
                 print(f"Spawning regular TNT for {author} (from chat command)")
                 new_tnt = Tnt(space, pickaxe.body.position.x, pickaxe.body.position.y - 100,
-                             texture_atlas, atlas_items, sound_manager, owner_name=author)
+                              texture_atlas, atlas_items, sound_manager, owner_name=author)
                 tnt_list.append(new_tnt)
                 last_tnt_spawn = current_time
 
@@ -361,7 +377,7 @@ def game():
                 author = mega_tnt_queue.pop(0)
                 print(f"Spawning MegaTNT for {author} (New Subscriber)")
                 new_megatnt = MegaTnt(space, pickaxe.body.position.x, pickaxe.body.position.y - 100,
-                      texture_atlas, atlas_items, sound_manager, owner_name=author)
+                              texture_atlas, atlas_items, sound_manager, owner_name=author)
                 tnt_list.append(new_megatnt)
                 last_tnt_spawn = current_time
 
@@ -395,9 +411,33 @@ def game():
             if pickaxe_queue:
                 author, pickaxe_type = pickaxe_queue.pop(0)
                 print(f"Changing pickaxe for {author} to {pickaxe_type}")
-                pickaxe.pickaxe(pickaxe_type, texture_atlas, atlas_items)
+                pickaxe.pickaxe(pickaxe_type, texture_atlas, atlas_items, owner_name=author)
                 last_random_pickaxe = current_time
                 random_pickaxe_interval = 1000 * random.uniform(config["RANDOM_PICKAXE_INTERVAL_SECONDS_MIN"], config["RANDOM_PICKAXE_INTERVAL_SECONDS_MAX"])
+
+        # Handle spawn requests enqueued by Selenium debug thread (or other threads)
+        pending = get_pending_spawns(20)
+        # process at most 3 spawns per frame to avoid hitches
+        for req in pending[:3]:
+            stype = req.get("type")
+            x = req.get("x")
+            y = req.get("y")
+            owner = req.get("owner_name")
+            owner_photo_url = req.get("owner_photo")  # Keep the URL, don't convert to surface
+            # We'll pass the URL directly to TNT classes
+
+            if stype == "tnt":
+                new_tnt = Tnt(space, x, y, texture_atlas, atlas_items, sound_manager, owner_name=owner, owner_photo=owner_photo_url)
+                tnt_list.append(new_tnt)
+                print(f"Spawned TNT for {owner} from spawn queue")
+            elif stype == "mega":
+                new_megatnt = MegaTnt(space, x, y, texture_atlas, atlas_items, sound_manager, owner_name=owner, owner_photo=owner_photo_url)
+                tnt_list.append(new_megatnt)
+                print(f"Spawned MegaTNT for {owner} from spawn queue")
+            elif stype == "nuke":
+                new_nuketnt = NukeTnt(space, x, y, texture_atlas, atlas_items, sound_manager, owner_name=owner, owner_photo=owner_photo_url)
+                tnt_list.append(new_nuketnt)
+                print(f"Spawned NukeTNT for {owner} from spawn queue")
 
 
         # Delete chunks
@@ -434,6 +474,23 @@ def game():
         # Draw HUD
         hud.draw(internal_surface, pickaxe.body.position.y, fast_slow_active, fast_slow)
 
+        # --- DEBUG MODE INDICATOR ---
+        if DEBUG_MODE_ACTIVE:
+            font = pygame.font.Font(None, 48)
+            text = font.render("DEBUG MODE ACTIVE", True, (255, 255, 0))
+            internal_surface.blit(text, (20, 20))
+            font_small = pygame.font.Font(None, 32)
+            instructions = [
+                "F1: Toggle Debug Mode",
+                "1: Spawn TNT",
+                "2: Spawn MegaTNT",
+                "3: Spawn NukeTNT",
+                "0: Scrape YouTube Live Chat (Selenium)"
+            ]
+            for i, instr in enumerate(instructions):
+                t = font_small.render(instr, True, (255, 255, 255))
+                internal_surface.blit(t, (20, 80 + i * 32))
+        
         # Scale internal surface to fit the resized window
         scaled_surface = pygame.transform.smoothscale(internal_surface, (window_width, window_height))
         screen.blit(scaled_surface, (0, 0))
@@ -462,34 +519,12 @@ def game():
         pygame.display.flip()
         clock.tick(FRAMERATE)  # Cap the frame rate
 
-        # Inside the main loop
         keys = pygame.key.get_pressed()
 
         # Handle TNT spawn (key T)
-        if keys[pygame.K_t]:
-            if not key_t_pressed:  # Only spawn if the key was not pressed in the previous frame
-                new_tnt = Tnt(space, pickaxe.body.position.x, pickaxe.body.position.y - 100,
-                            texture_atlas, atlas_items, sound_manager)
-                tnt_list.append(new_tnt)
-                last_tnt_spawn = current_time
-                # New random interval for the next TNT spawn
-                tnt_spawn_interval = 1000 * random.uniform(config["TNT_SPAWN_INTERVAL_SECONDS_MIN"], config["TNT_SPAWN_INTERVAL_SECONDS_MAX"])
-            key_t_pressed = True
-        else:
-            key_t_pressed = False  # Reset the flag when the key is released
 
         # Handle MegaTNT spawn (key M)
-        if keys[pygame.K_m]:
-            if not key_m_pressed:  # Only spawn if the key was not pressed in the previous frame
-                new_megatnt = MegaTnt(space, pickaxe.body.position.x, pickaxe.body.position.y - 100,
-                                    texture_atlas, atlas_items, sound_manager)
-                tnt_list.append(new_megatnt)
-                last_tnt_spawn = current_time
-                # New random interval for the next TNT spawn
-                tnt_spawn_interval = 1000 * random.uniform(config["TNT_SPAWN_INTERVAL_SECONDS_MIN"], config["TNT_SPAWN_INTERVAL_SECONDS_MAX"])
-            key_m_pressed = True
-        else:
-            key_m_pressed = False  # Reset the flag when the key is released
+
 
     # Quit pygame properly
     pygame.quit()

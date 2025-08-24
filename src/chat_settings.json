@@ -1,0 +1,10 @@
+{
+  "selenium": {
+    "poll_interval_seconds": 10,
+    "max_users_per_poll": 5,
+    "tnt_chance": 0.9,
+    "mega_chance": 0.05,
+    "nuke_chance": 0.01,
+    "other_chance": 0.04
+  }
+}

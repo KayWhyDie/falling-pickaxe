@@ -7,7 +7,7 @@ from chunk import chunks
 from explosion import Explosion
 
 class Tnt:
-    def __init__(self, space, x, y, texture_atlas, atlas_items, sound_manager, owner_name=None, velocity=0, rotation=0, mass=70):
+    def __init__(self, space, x, y, texture_atlas, atlas_items, sound_manager, owner_name=None, owner_photo=None, velocity=0, rotation=0, mass=70):
         print("Spawning TNT")
         self.texture_atlas = texture_atlas
         self.atlas_items = atlas_items
@@ -45,9 +45,8 @@ class Tnt:
 
         self.detonated = False
         self.spawn_time = pygame.time.get_ticks()
-
-        # Owner name (nick from chat)
         self.owner_name = owner_name
+        self.owner_photo_url = owner_photo  # store URL instead of surface
         self.font = pygame.font.Font(None, 70)
 
     def on_collision(self, arbiter, space, data):
@@ -119,16 +118,30 @@ class Tnt:
 
         # Draw owner name above TNT
         if self.owner_name:
+            # Position name above avatar (slightly higher to account for larger avatar)
             text_surface = self.font.render(self.owner_name, True, (255, 255, 255))
-            text_rect = text_surface.get_rect(center=(self.body.position.x - camera.offset_x, self.body.position.y - 55 - camera.offset_y))
+            text_rect = text_surface.get_rect(center=(self.body.position.x - camera.offset_x, self.body.position.y - 155 - camera.offset_y))
             shadow = self.font.render(self.owner_name, True, (0, 0, 0))
-            shadow_rect = shadow.get_rect(center=(self.body.position.x + 1 - camera.offset_x, self.body.position.y - 54 - camera.offset_y))
+            shadow_rect = shadow.get_rect(center=(self.body.position.x + 1 - camera.offset_x, self.body.position.y - 154 - camera.offset_y))
             screen.blit(shadow, shadow_rect)
             screen.blit(text_surface, text_rect)
+        # Draw owner photo (avatar) if available
+        if self.owner_photo_url:
+            try:
+                from avatar_cache import get as get_avatar
+                avatar = get_avatar(self.owner_photo_url)
+                if avatar is not None:
+                    # Scale avatar to 3x size (96x96)
+                    scaled_avatar = pygame.transform.scale(avatar, (96, 96))
+                    # Center avatar on TNT
+                    avatar_rect = scaled_avatar.get_rect(center=(self.body.position.x - camera.offset_x, self.body.position.y - camera.offset_y))
+                    screen.blit(scaled_avatar, avatar_rect)
+            except Exception:
+                pass  # Skip drawing if avatar not available
 
 class MegaTnt(Tnt):
-    def __init__(self, space, x, y, texture_atlas, atlas_items, sound_manager, owner_name=None, velocity=0, rotation=0, mass=100):
-        super().__init__(space, x, y, texture_atlas, atlas_items, sound_manager, owner_name, velocity, rotation, mass)
+    def __init__(self, space, x, y, texture_atlas, atlas_items, sound_manager, owner_name=None, owner_photo=None, velocity=0, rotation=0, mass=100):
+        super().__init__(space, x, y, texture_atlas, atlas_items, sound_manager, owner_name, owner_photo, velocity, rotation, mass)
         print("Spawning MegaTNT")
         self.name = "mega_tnt"
         self.scale_multiplier = 2
@@ -203,9 +216,123 @@ class MegaTnt(Tnt):
 
         # Draw owner name above MegaTNT
         if self.owner_name:
+            # Position name above avatar (slightly higher to account for larger avatar)
             text_surface = self.font.render(self.owner_name, True, (255, 255, 255))
-            text_rect = text_surface.get_rect(center=(self.body.position.x - camera.offset_x, self.body.position.y - 55 - camera.offset_y))
+            text_rect = text_surface.get_rect(center=(self.body.position.x - camera.offset_x, self.body.position.y - 155 - camera.offset_y))
             shadow = self.font.render(self.owner_name, True, (0, 0, 0))
-            shadow_rect = shadow.get_rect(center=(self.body.position.x + 1 - camera.offset_x, self.body.position.y - 54 - camera.offset_y))
+            shadow_rect = shadow.get_rect(center=(self.body.position.x + 1 - camera.offset_x, self.body.position.y - 154 - camera.offset_y))
             screen.blit(shadow, shadow_rect)
             screen.blit(text_surface, text_rect)
+        # Draw owner photo (avatar) if available
+        if self.owner_photo_url:
+            try:
+                from avatar_cache import get as get_avatar
+                avatar = get_avatar(self.owner_photo_url)
+                if avatar is not None:
+                    # Scale avatar to 3x size (96x96)
+                    scaled_avatar = pygame.transform.scale(avatar, (96, 96))
+                    # Center avatar on MegaTNT
+                    avatar_rect = scaled_avatar.get_rect(center=(self.body.position.x - camera.offset_x, self.body.position.y - camera.offset_y))
+                    screen.blit(scaled_avatar, avatar_rect)
+            except Exception:
+                pass  # Skip drawing if avatar not available
+
+# ...existing code...
+
+class NukeTnt(Tnt):
+    def __init__(self, space, x, y, texture_atlas, atlas_items, sound_manager, owner_name=None, owner_photo=None, velocity=0, rotation=0, mass=150):
+        super().__init__(space, x, y, texture_atlas, atlas_items, sound_manager, owner_name, owner_photo, velocity, rotation, mass)
+        print("Spawning NukeTNT")
+        self.name = "nuke_tnt"
+        self.scale_multiplier = 3
+
+        rect = atlas_items["block"]["nuke"]
+        self.texture = pygame.transform.scale_by(texture_atlas.subsurface(rect), self.scale_multiplier)
+
+        width, height = self.texture.get_size()
+        self.shape.unsafe_set_vertices(pymunk.Poly.create_box(self.body, (width, height)).get_vertices())
+
+    def explode(self, explosions):
+        explosion_radius = 3 * BLOCK_SIZE * self.scale_multiplier * 1.5  # Even bigger radius
+        self.detonated = True
+
+        for chunk in chunks:
+            for row in chunks[chunk]:
+                for block in row:
+                    if block is None or getattr(block, "destroyed", False):
+                        continue
+
+                    dx = block.body.position.x - self.body.position.x
+                    dy = block.body.position.y - self.body.position.y
+                    distance = math.hypot(dx, dy)
+
+                    if distance <= explosion_radius:
+                        damage = int(150 * self.scale_multiplier * (1 - (distance / explosion_radius)))
+                        block.hp -= damage
+
+        explosion = Explosion(self.body.position, self.texture_atlas, self.atlas_items, particle_count=80)
+        explosions.append(explosion)
+
+    def update(self, tnt_list, explosions, camera):
+        if self.detonated:
+            self.space.remove(self.body, self.shape)
+            if self in tnt_list:
+                tnt_list.remove(self)
+            return
+
+        # Limit falling speed (terminal velocity)
+        if self.body.velocity.y > 1000:
+            self.body.velocity = (self.body.velocity.x, 1000)
+
+        current_time = pygame.time.get_ticks()
+        if current_time - self.spawn_time >= 4000:
+            self.explode(explosions)
+            camera.shake(30, 60)  # Shake camera for 30 frames with intensity 30
+
+    def draw(self, screen, camera):
+        if self.detonated:
+            return
+
+        rotated_image = pygame.transform.rotate(self.texture, -math.degrees(self.body.angle))
+        rect = rotated_image.get_rect(center=(self.body.position.x, self.body.position.y))
+        rect.y -= camera.offset_y
+        rect.x -= camera.offset_x
+        screen.blit(rotated_image, rect)
+
+        # Blinking effect: pulsating white overlay
+        blink_period = 500
+        current_time = pygame.time.get_ticks() % blink_period
+        brightness = (math.sin(current_time / blink_period * 2 * math.pi) + 1) / 2
+        alpha = int(brightness * 192)
+
+        white_overlay = pygame.Surface(self.texture.get_size(), pygame.SRCALPHA)
+        white_overlay.fill((255, 255, 255, alpha))
+
+        rotated_overlay = pygame.transform.rotate(white_overlay, -math.degrees(self.body.angle))
+        overlay_rect = rotated_overlay.get_rect(center=(self.body.position.x, self.body.position.y))
+        overlay_rect.y -= camera.offset_y
+        overlay_rect.x -= camera.offset_x
+        screen.blit(rotated_overlay, overlay_rect)
+
+        # Draw owner name above NukeTNT
+        if self.owner_name:
+            # Position name above avatar (slightly higher to account for larger avatar)
+            text_surface = self.font.render(self.owner_name, True, (255, 255, 255))
+            text_rect = text_surface.get_rect(center=(self.body.position.x - camera.offset_x, self.body.position.y - 155 - camera.offset_y))
+            shadow = self.font.render(self.owner_name, True, (0, 0, 0))
+            shadow_rect = shadow.get_rect(center=(self.body.position.x + 1 - camera.offset_x, self.body.position.y - 154 - camera.offset_y))
+            screen.blit(shadow, shadow_rect)
+            screen.blit(text_surface, text_rect)
+        # Draw owner photo (avatar) if available
+        if self.owner_photo_url:
+            try:
+                from avatar_cache import get as get_avatar
+                avatar = get_avatar(self.owner_photo_url)
+                if avatar is not None:
+                    # Scale avatar to 3x size (96x96)
+                    scaled_avatar = pygame.transform.scale(avatar, (96, 96))
+                    # Center avatar on NukeTNT
+                    avatar_rect = scaled_avatar.get_rect(center=(self.body.position.x - camera.offset_x, self.body.position.y - camera.offset_y))
+                    screen.blit(scaled_avatar, avatar_rect)
+            except Exception:
+                pass  # Skip drawing if avatar not available
